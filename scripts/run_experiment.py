@@ -45,6 +45,12 @@ def main(cfg: DictConfig) -> None:
     print("Loading data...")
     df = pd.read_csv(cfg.paths.csv_path)
     
+    # Development mode: limit to subset of lesions
+    max_lesions = None
+    if cfg.data.dev_mode:
+        max_lesions = cfg.data.max_lesions
+        print(f"Development mode enabled: Using max {max_lesions} lesions")
+    
     # Create folds
     print("Creating folds...")
     folds = create_folds(
@@ -52,7 +58,17 @@ def main(cfg: DictConfig) -> None:
         n_folds=cfg.data.n_folds,
         stratify_by=cfg.data.stratify_by,
         seed=cfg.experiment.seed,
+        max_lesions=max_lesions,
     )
+    
+    # Filter dataframe to only include lesions in the folds (if dev mode was used)
+    if max_lesions is not None:
+        all_lesion_ids = set()
+        for train_ids, val_ids in folds:
+            all_lesion_ids.update(train_ids)
+            all_lesion_ids.update(val_ids)
+        df = df[df["lesion_id"].isin(all_lesion_ids)]
+        print(f"Filtered dataset to {len(df)} images from {len(all_lesion_ids)} lesions")
     
     # Determine which folds to run
     if cfg.experiment.fold is not None:

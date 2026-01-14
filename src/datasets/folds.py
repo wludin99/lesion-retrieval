@@ -12,6 +12,7 @@ def create_folds(
     n_folds: int = 5,
     stratify_by: Optional[str] = None,
     seed: int = 42,
+    max_lesions: Optional[int] = None,
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
     """Create cross-validation folds by lesion_id.
     
@@ -25,12 +26,22 @@ def create_folds(
         stratify_by: Column name to stratify by (e.g., 'anatom_site_general').
             If None, uses regular KFold.
         seed: Random seed for reproducibility.
+        max_lesions: Maximum number of lesions to use. If None, uses all lesions.
+            Useful for development/testing with smaller datasets.
         
     Returns:
         List of (train_lesion_ids, val_lesion_ids) tuples, one per fold.
     """
     # Get unique lesion IDs
     lesion_df = df.groupby("lesion_id").first().reset_index()
+    
+    # Limit to max_lesions if specified (for dev mode)
+    total_lesions = len(lesion_df)
+    if max_lesions is not None and total_lesions > max_lesions:
+        # Set random seed for reproducible subset selection
+        np.random.seed(seed)
+        lesion_df = lesion_df.sample(n=max_lesions, random_state=seed).reset_index(drop=True)
+        print(f"Development mode: Using {max_lesions} lesions out of {total_lesions} total")
     
     if stratify_by is not None and stratify_by in lesion_df.columns:
         # Stratified split
