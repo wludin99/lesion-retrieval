@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from sklearn.cluster import DBSCAN
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from tqdm import tqdm
 
 
 def compute_pairwise_f1(
@@ -164,7 +165,7 @@ def evaluate_embeddings(
     best_cosine_f1 = -1.0
     best_cosine_threshold = None
     
-    for threshold in cosine_thresholds:
+    for threshold in tqdm(cosine_thresholds, desc="Evaluating cosine thresholds"):
         metrics = compute_pairwise_f1(embeddings, lesion_ids, threshold=threshold)
         results[f"cosine_threshold_{threshold:.3f}"] = metrics
         
@@ -184,7 +185,7 @@ def evaluate_embeddings(
     best_dbscan_f1 = -1.0
     best_dbscan_eps = None
     
-    for eps in dbscan_eps_values:
+    for eps in tqdm(dbscan_eps_values, desc="Evaluating DBSCAN eps values"):
         metrics = evaluate_with_dbscan(
             embeddings, lesion_ids, eps=eps, min_samples=dbscan_min_samples
         )
