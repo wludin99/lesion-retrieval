@@ -1,0 +1,22 @@
+# Training configuration
+training:
+  # Phase 1: Baseline (no training)
+  # Phase 2: Metric learning fine-tuning
+  epochs: 50
+  learning_rate: 1e-4
+  weight_decay: 1e-4
+  optimizer: adamw
+  scheduler: cosine
+  warmup_epochs: 5
+  
+  # Gradient clipping
+  max_grad_norm: 1.0
+  
+  # Early stopping
+  early_stopping:
+    patience: 10
+    min_delta: 0.001
+  
+  # Checkpointing
+  save_checkpoints: true
+  checkpoint_freq: 5

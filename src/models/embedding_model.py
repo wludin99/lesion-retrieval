@@ -1,0 +1,161 @@
+"""Embedding extraction models."""
+
+from typing import Optional
+
+import torch
+import torch.nn as nn
+from transformers import AutoModel, AutoImageProcessor
+import timm
+
+
+class EmbeddingModel(nn.Module):
+    """Model for extracting image embeddings.
+    
+    Supports ResNet, ViT, and DINOv2 backbones.
+    """
+    
+    def __init__(
+        self,
+        backbone: str,
+        pretrained: bool = True,
+        embedding_dim: int = 2048,
+        pool_type: str = "avg",
+    ):
+        """Initialize embedding model.
+        
+        Args:
+            backbone: Model backbone name. Options:
+                - 'resnet50', 'resnet101', etc. (timm)
+                - 'google/vit-base-patch16-224' (HuggingFace)
+                - 'facebook/dinov2-base' (HuggingFace)
+            pretrained: Whether to use pretrained weights.
+            embedding_dim: Expected embedding dimension.
+            pool_type: Pooling type. For ResNet: 'avg', 'max', 'adaptive'.
+                For ViT/DINOv2: 'cls' (CLS token) or 'mean' (mean pooling).
+        """
+        super().__init__()
+        self.backbone_name = backbone
+        self.embedding_dim = embedding_dim
+        self.pool_type = pool_type
+        
+        # Initialize backbone
+        if backbone.startswith("resnet"):
+            self._init_resnet(backbone, pretrained)
+        elif "vit" in backbone.lower() or "dinov2" in backbone.lower():
+            self._init_transformer(backbone, pretrained)
+        else:
+            raise ValueError(f"Unsupported backbone: {backbone}")
+    
+    def _init_resnet(self, backbone: str, pretrained: bool) -> None:
+        """Initialize ResNet backbone."""
+        self.backbone = timm.create_model(
+            backbone,
+            pretrained=pretrained,
+            num_classes=0,  # Remove classifier
+            global_pool="",  # No pooling yet
+        )
+        
+        # Get feature dimension
+        with torch.no_grad():
+            dummy = torch.randn(1, 3, 224, 224)
+            features = self.backbone.forward_features(dummy)
+            if isinstance(features, tuple):
+                features = features[-1]
+            self.feature_dim = features.shape[1]
+        
+        # Add pooling layer
+        if self.pool_type == "avg":
+            self.pool = nn.AdaptiveAvgPool2d(1)
+        elif self.pool_type == "max":
+            self.pool = nn.AdaptiveMaxPool2d(1)
+        elif self.pool_type == "adaptive":
+            self.pool = nn.AdaptiveAvgPool2d(1)
+        else:
+            raise ValueError(f"Unsupported pool_type for ResNet: {self.pool_type}")
+    
+    def _init_transformer(self, backbone: str, pretrained: bool) -> None:
+        """Initialize ViT/DINOv2 transformer backbone."""
+        if pretrained:
+            self.backbone = AutoModel.from_pretrained(
+                backbone,
+                trust_remote_code=True,
+            )
+        else:
+            # For non-pretrained, we'd need to initialize from config
+            # For now, still load pretrained but user can freeze weights
+            self.backbone = AutoModel.from_pretrained(
+                backbone,
+                trust_remote_code=True,
+            )
+        self.feature_dim = self.backbone.config.hidden_size
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+        
+        Args:
+            x: Input tensor of shape (B, C, H, W).
+            
+        Returns:
+            Embedding tensor of shape (B, embedding_dim).
+        """
+        if "resnet" in self.backbone_name:
+            # ResNet forward
+            features = self.backbone.forward_features(x)
+            if isinstance(features, tuple):
+                features = features[-1]
+            
+            # Pool spatial dimensions
+            if len(features.shape) == 4:  # (B, C, H, W)
+                features = self.pool(features)
+                features = features.view(features.size(0), -1)
+            
+            return features
+        
+        else:
+            # Transformer forward
+            outputs = self.backbone(pixel_values=x)
+            
+            if self.pool_type == "cls":
+                # Use CLS token
+                embeddings = outputs.last_hidden_state[:, 0, :]
+            else:
+                # Mean pooling over sequence length
+                embeddings = outputs.last_hidden_state.mean(dim=1)
+            
+            return embeddings
+    
+    def extract_embeddings(
+        self,
+        dataloader: torch.utils.data.DataLoader,
+        device: torch.device,
+        normalize: bool = True,
+    ) -> tuple[torch.Tensor, list, list]:
+        """Extract embeddings for all samples in a dataloader.
+        
+        Args:
+            dataloader: DataLoader with images.
+            device: Device to run inference on.
+            normalize: Whether to L2-normalize embeddings.
+            
+        Returns:
+            Tuple of (embeddings, lesion_ids, image_ids).
+        """
+        self.eval()
+        embeddings_list = []
+        lesion_ids_list = []
+        image_ids_list = []
+        
+        with torch.no_grad():
+            for images, lesion_ids, image_ids in dataloader:
+                images = images.to(device)
+                emb = self.forward(images)
+                
+                if normalize:
+                    emb = nn.functional.normalize(emb, p=2, dim=1)
+                
+                embeddings_list.append(emb.cpu())
+                lesion_ids_list.extend(lesion_ids)
+                image_ids_list.extend(image_ids)
+        
+        embeddings = torch.cat(embeddings_list, dim=0)
+        return embeddings, lesion_ids_list, image_ids_list

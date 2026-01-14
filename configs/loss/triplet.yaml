@@ -1,0 +1,7 @@
+# Triplet loss configuration
+loss:
+  name: triplet
+  margin: 0.5
+  
+  # Sampling strategy
+  sampling: random  # random, hard, semi-hard

@@ -1,0 +1,29 @@
+defaults:
+  - data: default
+  - model: resnet
+  - training: default
+  - loss: none
+  - evaluation: default
+  - logging: default
+  - _self_
+
+# Experiment settings
+experiment:
+  name: baseline_embedding
+  phase: 1  # 1: baseline embeddings, 2: metric learning
+  fold: null  # null for all folds, 0-4 for specific fold
+  seed: 42
+
+# Paths
+paths:
+  data_dir: data
+  csv_path: ${paths.data_dir}/data.csv
+  images_dir: ${paths.data_dir}/images
+  output_dir: experiments
+
+# Hydra settings
+hydra:
+  run:
+    dir: ${paths.output_dir}/${experiment.name}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: ${paths.output_dir}/${experiment.name}

@@ -1,0 +1,9 @@
+# Vision Transformer model configuration
+model:
+  name: vit
+  backbone: google/vit-base-patch16-224
+  pretrained: true
+  embedding_dim: 768  # ViT-Base feature dim
+  
+  # Feature extraction
+  pool_type: cls  # cls token or mean pooling

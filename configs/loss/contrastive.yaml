@@ -1,0 +1,5 @@
+# Contrastive loss configuration
+loss:
+  name: contrastive
+  margin: 1.0
+  temperature: 0.07
