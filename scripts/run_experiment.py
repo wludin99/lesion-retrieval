@@ -92,13 +92,26 @@ def main(cfg: DictConfig) -> None:
             normalize=cfg.data.normalize,
         )
         
+        # Create model
+        # Prefer CUDA, then MPS (Apple Silicon), then CPU
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+        print(f"Using device: {device}")
+        
+        # MPS doesn't support pin_memory, so disable it for MPS
+        use_pin_memory = cfg.data.pin_memory and device.type != "mps"
+        
         # Create data loaders
         train_loader = DataLoader(
             train_dataset,
             batch_size=cfg.data.batch_size,
             shuffle=True if cfg.experiment.phase == 2 else False,
             num_workers=cfg.data.num_workers,
-            pin_memory=cfg.data.pin_memory,
+            pin_memory=use_pin_memory,
         )
         
         val_loader = DataLoader(
@@ -106,12 +119,8 @@ def main(cfg: DictConfig) -> None:
             batch_size=cfg.data.batch_size,
             shuffle=False,
             num_workers=cfg.data.num_workers,
-            pin_memory=cfg.data.pin_memory,
+            pin_memory=use_pin_memory,
         )
-        
-        # Create model
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {device}")
         
         model = EmbeddingModel(
             backbone=cfg.model.backbone,

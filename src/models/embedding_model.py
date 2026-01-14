@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoImageProcessor
+from tqdm import tqdm
 import timm
 
 
@@ -146,7 +147,7 @@ class EmbeddingModel(nn.Module):
         image_ids_list = []
         
         with torch.no_grad():
-            for images, lesion_ids, image_ids in dataloader:
+            for images, lesion_ids, image_ids in tqdm(dataloader, desc="Extracting embeddings"):
                 images = images.to(device)
                 emb = self.forward(images)
                 
