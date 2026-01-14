@@ -1,12 +1,11 @@
 # Logging configuration
-logging:
-  wandb:
-    enabled: true
-    project: skinbit
-    entity: null  # set your W&B entity
-    tags: []
-    notes: ""
-  
-  # Logging frequency
-  log_freq: 10  # log every N batches
-  log_images: false  # log sample images to W&B
+wandb:
+  enabled: true
+  project: skinbit
+  entity: null  # set your W&B entity
+  tags: []
+  notes: ""
+
+# Logging frequency
+log_freq: 10  # log every N batches
+log_images: false  # log sample images to W&B

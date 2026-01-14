@@ -1,9 +1,8 @@
 # DINOv2 model configuration
-model:
-  name: dinov2
-  backbone: facebook/dinov2-base
-  pretrained: true
-  embedding_dim: 768  # DINOv2-Base feature dim
-  
-  # Feature extraction
-  pool_type: mean  # cls token or mean pooling (DINOv2 uses mean by default)
+name: dinov2
+backbone: facebook/dinov2-base
+pretrained: true
+embedding_dim: 768  # DINOv2-Base feature dim
+
+# Feature extraction
+pool_type: mean  # cls token or mean pooling (DINOv2 uses mean by default)

@@ -1,9 +1,8 @@
 # ResNet model configuration
-model:
-  name: resnet
-  backbone: resnet50
-  pretrained: true
-  embedding_dim: 2048  # ResNet-50 feature dim
-  
-  # Feature extraction
-  pool_type: avg  # avg, max, or adaptive
+name: resnet
+backbone: resnet50
+pretrained: true
+embedding_dim: 2048  # ResNet-50 feature dim
+
+# Feature extraction
+pool_type: avg  # avg, max, or adaptive

@@ -1,3 +1,2 @@
 # No loss (for Phase 1 baseline)
-loss:
-  name: none
+name: none

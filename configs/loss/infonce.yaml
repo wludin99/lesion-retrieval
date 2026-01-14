@@ -1,7 +1,6 @@
 # InfoNCE / NT-Xent loss configuration
-loss:
-  name: infonce
-  temperature: 0.07
-  
-  # Sampling
-  num_negatives: null  # null for all negatives in batch
+name: infonce
+temperature: 0.07
+
+# Sampling
+num_negatives: null  # null for all negatives in batch
