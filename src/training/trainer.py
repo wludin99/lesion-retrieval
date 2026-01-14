@@ -181,8 +181,8 @@ class Trainer:
             # Print epoch summary
             print(f"\nEpoch {epoch} Summary:")
             print(f"  Train loss: {train_metrics['loss']:.4f}")
-            print(f"  Val cosine F1: {val_metrics['val/cosine_f1']:.4f}")
-            print(f"  Val DBSCAN F1: {val_metrics['val/dbscan_f1']:.4f}")
+            print(f"  Val cosine F1: {val_metrics['val/cosine_f1']:.4f} (threshold: {val_metrics.get('val/cosine_threshold', 0.5):.4f})")
+            print(f"  Val DBSCAN F1: {val_metrics['val/dbscan_f1']:.4f} (eps: {val_metrics.get('val/dbscan_eps', 0.1):.4f})")
             if self.best_val_f1 >= 0:
                 print(f"  Best val F1 so far: {self.best_val_f1:.4f}")
             print(f"  Patience: {self.patience_counter}/{early_stopping_patience if early_stopping_patience else 'N/A'}")

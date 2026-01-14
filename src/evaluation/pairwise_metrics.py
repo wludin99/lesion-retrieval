@@ -14,7 +14,9 @@ def compute_pairwise_f1(
     lesion_ids: List[str],
     threshold: float = 0.5,
     metric: str = "cosine",
-) -> Dict[str, float]:
+    image_ids: Optional[List[str]] = None,
+    return_misclassified: bool = False,
+) -> Dict:
     """Compute pairwise F1 score using cosine similarity thresholding.
     
     Args:
@@ -22,9 +24,11 @@ def compute_pairwise_f1(
         lesion_ids: List of lesion_id labels for each embedding.
         threshold: Similarity threshold for positive pairs.
         metric: Distance metric ('cosine' or 'euclidean').
+        image_ids: Optional list of image IDs for tracking misclassifications.
+        return_misclassified: If True, also return misclassified pairs.
         
     Returns:
-        Dictionary with precision, recall, f1, and accuracy.
+        Dictionary with precision, recall, f1, accuracy, and optionally misclassified pairs.
     """
     if isinstance(embeddings, torch.Tensor):
         embeddings = embeddings.cpu().numpy()
@@ -79,7 +83,9 @@ def evaluate_with_dbscan(
     lesion_ids: List[str],
     eps: float = 0.5,
     min_samples: int = 2,
-) -> Dict[str, float]:
+    image_ids: Optional[List[str]] = None,
+    return_misclassified: bool = False,
+) -> Dict:
     """Evaluate embeddings using DBSCAN clustering.
     
     Args:
@@ -87,9 +93,11 @@ def evaluate_with_dbscan(
         lesion_ids: List of lesion_id labels for each embedding.
         eps: DBSCAN eps parameter.
         min_samples: DBSCAN min_samples parameter.
+        image_ids: Optional list of image IDs for tracking misclassifications.
+        return_misclassified: If True, also return misclassified pairs.
         
     Returns:
-        Dictionary with precision, recall, f1, and accuracy.
+        Dictionary with precision, recall, f1, accuracy, and optionally misclassified pairs.
     """
     if isinstance(embeddings, torch.Tensor):
         embeddings = embeddings.cpu().numpy()
@@ -143,6 +151,8 @@ def evaluate_embeddings(
     cosine_thresholds: Optional[List[float]] = None,
     dbscan_eps_values: Optional[List[float]] = None,
     dbscan_min_samples: int = 2,
+    image_ids: Optional[List[str]] = None,
+    return_misclassified: bool = False,
 ) -> Dict[str, Dict[str, float]]:
     """Comprehensive evaluation of embeddings.
     
@@ -152,6 +162,8 @@ def evaluate_embeddings(
         cosine_thresholds: List of cosine similarity thresholds to try.
         dbscan_eps_values: List of DBSCAN eps values to try.
         dbscan_min_samples: DBSCAN min_samples parameter.
+        image_ids: Optional list of image IDs for tracking misclassifications.
+        return_misclassified: If True, also return misclassified pairs in best results.
         
     Returns:
         Dictionary with results for each method and threshold.
@@ -175,7 +187,13 @@ def evaluate_embeddings(
     
     results["cosine_best"] = {
         "threshold": best_cosine_threshold,
-        **compute_pairwise_f1(embeddings, lesion_ids, threshold=best_cosine_threshold),
+        **compute_pairwise_f1(
+            embeddings,
+            lesion_ids,
+            threshold=best_cosine_threshold,
+            image_ids=image_ids,
+            return_misclassified=return_misclassified,
+        ),
     }
     
     # DBSCAN clustering
@@ -198,7 +216,12 @@ def evaluate_embeddings(
     results["dbscan_best"] = {
         "eps": best_dbscan_eps,
         **evaluate_with_dbscan(
-            embeddings, lesion_ids, eps=best_dbscan_eps, min_samples=dbscan_min_samples
+            embeddings,
+            lesion_ids,
+            eps=best_dbscan_eps,
+            min_samples=dbscan_min_samples,
+            image_ids=image_ids,
+            return_misclassified=return_misclassified,
         ),
     }
     

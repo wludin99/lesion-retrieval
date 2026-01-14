@@ -16,7 +16,7 @@ from datasets import DermoscopicDataset, create_folds, create_train_test_split
 from models import EmbeddingModel
 from losses import ContrastiveLoss, TripletLoss, InfoNCELoss
 from training import Trainer
-from evaluation import evaluate_embeddings
+from evaluation import evaluate_embeddings, save_misclassifications
 from utils import set_seed
 
 
@@ -100,8 +100,12 @@ def main(cfg: DictConfig) -> None:
         print(f"Filtered dataset to {len(df)} images from {len(all_lesion_ids)} lesions")
     
     # Determine which folds to run
+    # In dev mode, only run first fold if fold not explicitly specified
     if cfg.experiment.fold is not None:
         fold_indices = [cfg.experiment.fold]
+    elif cfg.data.dev_mode:
+        fold_indices = [0]
+        print(f"Development mode: Running only fold 0 (out of {len(folds)} folds)")
     else:
         fold_indices = list(range(len(folds)))
     
@@ -208,7 +212,31 @@ def main(cfg: DictConfig) -> None:
                 cosine_thresholds=None,  # Use defaults from config
                 dbscan_eps_values=None,
                 dbscan_min_samples=cfg.evaluation.dbscan.min_samples,
+                image_ids=val_image_ids if cfg.evaluation.get("save_misclassifications", False) else None,
+                return_misclassified=cfg.evaluation.get("save_misclassifications", False),
             )
+            
+            # Save misclassifications if enabled
+            if cfg.evaluation.get("save_misclassifications", False):
+                output_dir = Path(cfg.paths.output_dir) / cfg.experiment.name / f"fold_{fold_idx}"
+                
+                # Save cosine misclassifications
+                if "misclassified" in eval_results["cosine_best"]:
+                    save_misclassifications(
+                        eval_results["cosine_best"]["misclassified"],
+                        output_dir / "misclassifications_cosine.json",
+                        method="cosine",
+                        threshold=eval_results["cosine_best"]["threshold"],
+                    )
+                
+                # Save DBSCAN misclassifications
+                if "misclassified" in eval_results["dbscan_best"]:
+                    save_misclassifications(
+                        eval_results["dbscan_best"]["misclassified"],
+                        output_dir / "misclassifications_dbscan.json",
+                        method="dbscan",
+                        eps=eval_results["dbscan_best"]["eps"],
+                    )
             
             # Log results
             results = {
@@ -286,8 +314,15 @@ def main(cfg: DictConfig) -> None:
             # Train
             trainer.train()
             
-            # Final evaluation
-            print("Final evaluation...")
+            # Load best model checkpoint for final evaluation
+            best_checkpoint_path = output_dir / "best.pt"
+            if best_checkpoint_path.exists():
+                checkpoint = torch.load(best_checkpoint_path, map_location=device)
+                model.load_state_dict(checkpoint["model_state_dict"])
+                print(f"Loaded best model from epoch {checkpoint.get('epoch', 'unknown')}")
+            
+            # Final evaluation on validation set
+            print("Final evaluation on validation set...")
             val_embeddings, val_lesion_ids_list, val_image_ids = model.extract_embeddings(
                 val_loader, device, normalize=True
             )
@@ -295,23 +330,49 @@ def main(cfg: DictConfig) -> None:
             eval_results = evaluate_embeddings(
                 val_embeddings,
                 val_lesion_ids_list,
+                image_ids=val_image_ids if cfg.evaluation.get("save_misclassifications", False) else None,
+                return_misclassified=cfg.evaluation.get("save_misclassifications", False),
             )
+            
+            # Save misclassifications if enabled
+            if cfg.evaluation.get("save_misclassifications", False):
+                output_dir = Path(cfg.paths.output_dir) / cfg.experiment.name / f"fold_{fold_idx}"
+                
+                # Save cosine misclassifications
+                if "misclassified" in eval_results["cosine_best"]:
+                    save_misclassifications(
+                        eval_results["cosine_best"]["misclassified"],
+                        output_dir / "misclassifications_cosine.json",
+                        method="cosine",
+                        threshold=eval_results["cosine_best"]["threshold"],
+                    )
+                
+                # Save DBSCAN misclassifications
+                if "misclassified" in eval_results["dbscan_best"]:
+                    save_misclassifications(
+                        eval_results["dbscan_best"]["misclassified"],
+                        output_dir / "misclassifications_dbscan.json",
+                        method="dbscan",
+                        eps=eval_results["dbscan_best"]["eps"],
+                    )
             
             results = {
                 "fold": fold_idx,
                 "cosine_f1": eval_results["cosine_best"]["f1"],
                 "cosine_precision": eval_results["cosine_best"]["precision"],
                 "cosine_recall": eval_results["cosine_best"]["recall"],
+                "cosine_threshold": eval_results["cosine_best"]["threshold"],
                 "dbscan_f1": eval_results["dbscan_best"]["f1"],
                 "dbscan_precision": eval_results["dbscan_best"]["precision"],
                 "dbscan_recall": eval_results["dbscan_best"]["recall"],
+                "dbscan_eps": eval_results["dbscan_best"]["eps"],
             }
             
             all_results.append(results)
             
-            print(f"\nFold {fold_idx} Final Results:")
-            print(f"  Cosine F1: {results['cosine_f1']:.4f}")
-            print(f"  DBSCAN F1: {results['dbscan_f1']:.4f}")
+            print(f"\nFold {fold_idx} Final Results (Validation Set):")
+            print(f"  Cosine F1: {results['cosine_f1']:.4f} (threshold: {results['cosine_threshold']:.4f})")
+            print(f"  DBSCAN F1: {results['dbscan_f1']:.4f} (eps: {results['dbscan_eps']:.4f})")
         
         else:
             raise ValueError(f"Unknown phase: {cfg.experiment.phase}")

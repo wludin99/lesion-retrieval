@@ -16,3 +16,6 @@ metrics:
   - precision
   - recall
   - accuracy
+  
+# Save misclassified pairs for visualization
+save_misclassifications: true
