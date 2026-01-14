@@ -37,6 +37,9 @@ class ContrastiveLoss(nn.Module):
         Returns:
             Scalar loss value.
         """
+        # Embeddings should already be normalized, but ensure they are
+        embeddings = F.normalize(embeddings, p=2, dim=1)
+        
         # Compute pairwise distances
         distances = self._pairwise_distance(embeddings)
         
@@ -72,18 +75,30 @@ class ContrastiveLoss(nn.Module):
     def _pairwise_distance(self, embeddings: torch.Tensor) -> torch.Tensor:
         """Compute pairwise Euclidean distances.
         
+        For normalized embeddings, this computes cosine distance.
+        Uses numerically stable computation to avoid NaN gradients.
+        
         Args:
             embeddings: Embedding tensor of shape (N, D).
             
         Returns:
             Distance matrix of shape (N, N).
         """
-        # L2 normalize
-        embeddings = F.normalize(embeddings, p=2, dim=1)
-        
-        # Compute pairwise distances
+        # Compute cosine similarity
         dot_product = torch.mm(embeddings, embeddings.t())
-        distances = 2 - 2 * dot_product  # Convert cosine to distance
-        distances = torch.sqrt(torch.clamp(distances, min=0.0))
+        
+        # Clamp to avoid numerical issues when embeddings are very similar
+        # Cosine similarity should be in [-1, 1], but clamp to [-0.9999, 0.9999] for stability
+        dot_product = torch.clamp(dot_product, min=-0.9999, max=0.9999)
+        
+        # Convert to distance: 2 - 2 * cos(theta) = 2 * (1 - cos(theta))
+        # This is the squared Euclidean distance for normalized vectors
+        distances = 2 - 2 * dot_product
+        
+        # Clamp to ensure non-negative (should already be, but be safe)
+        distances = torch.clamp(distances, min=1e-8)
+        
+        # Take square root for Euclidean distance
+        distances = torch.sqrt(distances)
         
         return distances

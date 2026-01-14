@@ -12,7 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 import wandb
 
-from datasets import DermoscopicDataset, create_folds
+from datasets import DermoscopicDataset, create_folds, create_train_test_split
 from models import EmbeddingModel
 from losses import ContrastiveLoss, TripletLoss, InfoNCELoss
 from training import Trainer
@@ -54,7 +54,7 @@ def main(cfg: DictConfig) -> None:
     
     # Load data
     print("Loading data...")
-    df = pd.read_csv(cfg.paths.csv_path)
+    df_full = pd.read_csv(cfg.paths.csv_path)
     
     # Development mode: limit to subset of lesions
     max_lesions = None
@@ -62,7 +62,25 @@ def main(cfg: DictConfig) -> None:
         max_lesions = cfg.data.max_lesions
         print(f"Development mode enabled: Using max {max_lesions} lesions")
     
-    # Create folds
+    # Create train/test split if enabled
+    test_lesion_ids = None
+    test_df = None
+    if cfg.data.get("use_train_test_split", False):
+        print("Creating train/test split...")
+        train_lesion_ids_all, test_lesion_ids = create_train_test_split(
+            df_full,
+            test_size=cfg.data.get("test_size", 0.2),
+            stratify_by=cfg.data.stratify_by,
+            seed=cfg.experiment.seed,
+        )
+        # Filter to training lesions only for CV
+        df = df_full[df_full["lesion_id"].isin(train_lesion_ids_all)].copy()
+        test_df = df_full[df_full["lesion_id"].isin(test_lesion_ids)].copy()
+        print(f"Train/test split: {len(train_lesion_ids_all)} train lesions, {len(test_lesion_ids)} test lesions")
+    else:
+        df = df_full
+    
+    # Create folds (on training data only if train/test split was used)
     print("Creating folds...")
     folds = create_folds(
         df,
@@ -87,8 +105,18 @@ def main(cfg: DictConfig) -> None:
     else:
         fold_indices = list(range(len(folds)))
     
+    # Determine device (needed for test evaluation)
+    if torch.cuda.is_available():
+        test_device = torch.device("cuda")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        test_device = torch.device("mps")
+    else:
+        test_device = torch.device("cpu")
+    test_use_pin_memory = cfg.data.pin_memory and test_device.type != "mps"
+    
     # Run experiments for each fold
     all_results = []
+    model = None  # Store model for test evaluation
     
     for fold_idx in fold_indices:
         print(f"\n{'='*60}")
@@ -149,12 +177,14 @@ def main(cfg: DictConfig) -> None:
             pin_memory=use_pin_memory,
         )
         
-        model = EmbeddingModel(
-            backbone=cfg.model.backbone,
-            pretrained=cfg.model.pretrained,
-            embedding_dim=cfg.model.embedding_dim,
-            pool_type=cfg.model.pool_type,
-        )
+        # Create model (reuse for test evaluation if same config)
+        if model is None or fold_idx == 0:
+            model = EmbeddingModel(
+                backbone=cfg.model.backbone,
+                pretrained=cfg.model.pretrained,
+                embedding_dim=cfg.model.embedding_dim,
+                pool_type=cfg.model.pool_type,
+            )
         model.to(device)
         
         # Phase 1: Baseline embedding extraction
@@ -286,7 +316,9 @@ def main(cfg: DictConfig) -> None:
         else:
             raise ValueError(f"Unknown phase: {cfg.experiment.phase}")
     
-    # Compute average results across folds
+    # Compute average results across folds and best hyperparameters
+    best_cosine_threshold = None
+    best_dbscan_eps = None
     if len(all_results) > 1:
         print(f"\n{'='*60}")
         print("Average Results Across Folds")
@@ -301,12 +333,18 @@ def main(cfg: DictConfig) -> None:
             "dbscan_recall": sum(r["dbscan_recall"] for r in all_results) / len(all_results),
         }
         
+        # Compute average best hyperparameters
+        best_cosine_threshold = sum(r.get("cosine_threshold", 0.5) for r in all_results) / len(all_results)
+        best_dbscan_eps = sum(r.get("dbscan_eps", 0.1) for r in all_results) / len(all_results)
+        
         print(f"  Cosine F1: {avg_results['cosine_f1']:.4f}")
         print(f"  Cosine Precision: {avg_results['cosine_precision']:.4f}")
         print(f"  Cosine Recall: {avg_results['cosine_recall']:.4f}")
         print(f"  DBSCAN F1: {avg_results['dbscan_f1']:.4f}")
         print(f"  DBSCAN Precision: {avg_results['dbscan_precision']:.4f}")
         print(f"  DBSCAN Recall: {avg_results['dbscan_recall']:.4f}")
+        print(f"  Best cosine threshold (avg): {best_cosine_threshold:.4f}")
+        print(f"  Best DBSCAN eps (avg): {best_dbscan_eps:.4f}")
         
         if wandb.run is not None:
             wandb.log({
@@ -316,6 +354,82 @@ def main(cfg: DictConfig) -> None:
                 "avg/dbscan_f1": avg_results["dbscan_f1"],
                 "avg/dbscan_precision": avg_results["dbscan_precision"],
                 "avg/dbscan_recall": avg_results["dbscan_recall"],
+                "avg/best_cosine_threshold": best_cosine_threshold,
+                "avg/best_dbscan_eps": best_dbscan_eps,
+            })
+    elif len(all_results) == 1:
+        # Single fold - use its hyperparameters
+        best_cosine_threshold = all_results[0].get("cosine_threshold", 0.5)
+        best_dbscan_eps = all_results[0].get("dbscan_eps", 0.1)
+    
+    # Final test set evaluation if train/test split was used
+    if test_df is not None and len(all_results) > 0:
+        print(f"\n{'='*60}")
+        print("Final Test Set Evaluation")
+        print(f"{'='*60}")
+        
+        # Load best model if Phase 2
+        if cfg.experiment.phase == 2:
+            # Load best model from first fold
+            best_model_path = Path(cfg.paths.output_dir) / cfg.experiment.name / "fold_0" / "best.pt"
+            if best_model_path.exists():
+                checkpoint = torch.load(best_model_path, map_location=test_device)
+                model.load_state_dict(checkpoint["model_state_dict"])
+                print(f"Loaded best model from {best_model_path}")
+        
+        model.to(test_device)
+        
+        # Create test dataset
+        test_dataset = DermoscopicDataset(
+            test_df,
+            images_dir=cfg.paths.images_dir,
+            image_size=cfg.data.image_size,
+            normalize=cfg.data.normalize,
+        )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=cfg.data.batch_size,
+            shuffle=False,
+            num_workers=cfg.data.num_workers,
+            pin_memory=test_use_pin_memory,
+        )
+        
+        # Extract test embeddings
+        model.eval()
+        test_embeddings, test_lesion_ids_list, test_image_ids = model.extract_embeddings(
+            test_loader, test_device, normalize=True
+        )
+        
+        # Evaluate with best hyperparameters
+        print(f"Evaluating test set with best hyperparameters...")
+        print(f"  Cosine threshold: {best_cosine_threshold:.4f}")
+        print(f"  DBSCAN eps: {best_dbscan_eps:.4f}")
+        
+        from evaluation.pairwise_metrics import compute_pairwise_f1, evaluate_with_dbscan
+        
+        test_cosine_results = compute_pairwise_f1(
+            test_embeddings, test_lesion_ids_list, threshold=best_cosine_threshold
+        )
+        test_dbscan_results = evaluate_with_dbscan(
+            test_embeddings, test_lesion_ids_list, eps=best_dbscan_eps, min_samples=cfg.evaluation.dbscan.min_samples
+        )
+        
+        print(f"\nTest Set Results:")
+        print(f"  Cosine F1: {test_cosine_results['f1']:.4f}")
+        print(f"  Cosine Precision: {test_cosine_results['precision']:.4f}")
+        print(f"  Cosine Recall: {test_cosine_results['recall']:.4f}")
+        print(f"  DBSCAN F1: {test_dbscan_results['f1']:.4f}")
+        print(f"  DBSCAN Precision: {test_dbscan_results['precision']:.4f}")
+        print(f"  DBSCAN Recall: {test_dbscan_results['recall']:.4f}")
+        
+        if wandb.run is not None:
+            wandb.log({
+                "test/cosine_f1": test_cosine_results["f1"],
+                "test/cosine_precision": test_cosine_results["precision"],
+                "test/cosine_recall": test_cosine_results["recall"],
+                "test/dbscan_f1": test_dbscan_results["f1"],
+                "test/dbscan_precision": test_dbscan_results["precision"],
+                "test/dbscan_recall": test_dbscan_results["recall"],
             })
     
     # Save resolved config
