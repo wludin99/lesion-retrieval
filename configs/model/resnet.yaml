@@ -1,6 +1,6 @@
 # ResNet model configuration
 name: resnet
-backbone: resnet50
+backbone: microsoft/resnet-50  # HuggingFace ResNet (more MPS-compatible than timm)
 pretrained: true
 embedding_dim: 2048  # ResNet-50 feature dim
 

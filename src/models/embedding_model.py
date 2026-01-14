@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoImageProcessor
 from tqdm import tqdm
-import timm
 
 
 class EmbeddingModel(nn.Module):
@@ -26,7 +25,7 @@ class EmbeddingModel(nn.Module):
         
         Args:
             backbone: Model backbone name. Options:
-                - 'resnet50', 'resnet101', etc. (timm)
+                - 'microsoft/resnet-50' (HuggingFace)
                 - 'google/vit-base-patch16-224' (HuggingFace)
                 - 'facebook/dinov2-base' (HuggingFace)
             pretrained: Whether to use pretrained weights.
@@ -40,28 +39,31 @@ class EmbeddingModel(nn.Module):
         self.pool_type = pool_type
         
         # Initialize backbone
-        if backbone.startswith("resnet"):
-            self._init_resnet(backbone, pretrained)
+        if "resnet" in backbone.lower():
+            # HuggingFace ResNet (e.g., "microsoft/resnet-50")
+            self._init_hf_resnet(backbone, pretrained)
         elif "vit" in backbone.lower() or "dinov2" in backbone.lower():
             self._init_transformer(backbone, pretrained)
         else:
-            raise ValueError(f"Unsupported backbone: {backbone}")
+            raise ValueError(f"Unsupported backbone: {backbone}. Use HuggingFace models like 'microsoft/resnet-50'")
     
-    def _init_resnet(self, backbone: str, pretrained: bool) -> None:
-        """Initialize ResNet backbone."""
-        self.backbone = timm.create_model(
-            backbone,
-            pretrained=pretrained,
-            num_classes=0,  # Remove classifier
-            global_pool="",  # No pooling yet
-        )
+    def _init_hf_resnet(self, backbone: str, pretrained: bool) -> None:
+        """Initialize ResNet backbone from HuggingFace."""
+        from transformers import ResNetModel
         
-        # Get feature dimension
+        self.backbone = ResNetModel.from_pretrained(backbone)
+        
+        # Get feature dimension from config - ResNet-50 has 2048 in final stage
+        # Check by running a forward pass
         with torch.no_grad():
             dummy = torch.randn(1, 3, 224, 224)
-            features = self.backbone.forward_features(dummy)
-            if isinstance(features, tuple):
-                features = features[-1]
+            outputs = self.backbone(dummy)
+            # HuggingFace ResNet returns BaseModelOutput with last_hidden_state
+            if hasattr(outputs, 'last_hidden_state'):
+                features = outputs.last_hidden_state
+            else:
+                # Fallback: might return tuple or tensor directly
+                features = outputs if isinstance(outputs, torch.Tensor) else outputs[0]
             self.feature_dim = features.shape[1]
         
         # Add pooling layer
@@ -76,18 +78,16 @@ class EmbeddingModel(nn.Module):
     
     def _init_transformer(self, backbone: str, pretrained: bool) -> None:
         """Initialize ViT/DINOv2 transformer backbone."""
-        if pretrained:
-            self.backbone = AutoModel.from_pretrained(
-                backbone,
-                trust_remote_code=True,
-            )
-        else:
-            # For non-pretrained, we'd need to initialize from config
-            # For now, still load pretrained but user can freeze weights
-            self.backbone = AutoModel.from_pretrained(
-                backbone,
-                trust_remote_code=True,
-            )
+        self.backbone = AutoModel.from_pretrained(
+            backbone,
+            trust_remote_code=True,
+        )
+        
+        # Disable pooler if it exists (we don't use it)
+        # This prevents the warning about pooler weights not being initialized
+        if hasattr(self.backbone, 'pooler') and self.backbone.pooler is not None:
+            self.backbone.pooler = None
+        
         self.feature_dim = self.backbone.config.hidden_size
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -100,10 +100,17 @@ class EmbeddingModel(nn.Module):
             Embedding tensor of shape (B, embedding_dim).
         """
         if "resnet" in self.backbone_name:
-            # ResNet forward
-            features = self.backbone.forward_features(x)
-            if isinstance(features, tuple):
-                features = features[-1]
+            # HuggingFace ResNet forward
+            outputs = self.backbone(x)
+            
+            # HuggingFace ResNet returns BaseModelOutput with last_hidden_state
+            if hasattr(outputs, 'last_hidden_state'):
+                features = outputs.last_hidden_state
+            elif isinstance(outputs, torch.Tensor):
+                features = outputs
+            else:
+                # Fallback: might be tuple
+                features = outputs[0] if isinstance(outputs, tuple) else outputs
             
             # Pool spatial dimensions
             if len(features.shape) == 4:  # (B, C, H, W)

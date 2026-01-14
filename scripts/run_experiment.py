@@ -30,6 +30,17 @@ def main(cfg: DictConfig) -> None:
     # Set random seed
     set_seed(cfg.experiment.seed)
     
+    # Development mode: automatically set epochs to 1
+    if cfg.data.dev_mode:
+        cfg.training.epochs = 1
+    
+    # Print configuration
+    print("\n" + "="*60)
+    print("Configuration")
+    print("="*60)
+    print(OmegaConf.to_yaml(cfg, resolve=True))
+    print("="*60 + "\n")
+    
     # Initialize W&B
     if cfg.logging.wandb.enabled:
         wandb.init(
