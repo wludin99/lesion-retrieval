@@ -1,6 +1,6 @@
 """Embedding extraction models."""
 
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -129,7 +129,7 @@ class EmbeddingModel(nn.Module):
         dataloader: torch.utils.data.DataLoader,
         device: torch.device,
         normalize: bool = True,
-    ) -> tuple[torch.Tensor, list, list]:
+    ) -> Tuple[torch.Tensor, List, List]:
         """Extract embeddings for all samples in a dataloader.
         
         Args:

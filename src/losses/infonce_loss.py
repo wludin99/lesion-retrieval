@@ -1,5 +1,7 @@
 """InfoNCE / NT-Xent loss implementation."""
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,7 +15,7 @@ class InfoNCELoss(nn.Module):
     softmax.
     """
     
-    def __init__(self, temperature: float = 0.07, num_negatives: int | None = None):
+    def __init__(self, temperature: float = 0.07, num_negatives: Optional[int] = None):
         """Initialize InfoNCE loss.
         
         Args:
@@ -27,7 +29,7 @@ class InfoNCELoss(nn.Module):
     def forward(
         self,
         embeddings: torch.Tensor,
-        labels: list[str],
+        labels: list,
     ) -> torch.Tensor:
         """Compute InfoNCE loss.
         

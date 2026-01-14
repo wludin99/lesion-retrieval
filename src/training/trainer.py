@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import wandb
 
-from ..evaluation.pairwise_metrics import evaluate_embeddings
+from evaluation.pairwise_metrics import evaluate_embeddings
 
 
 class Trainer:

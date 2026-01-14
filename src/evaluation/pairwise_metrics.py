@@ -1,6 +1,6 @@
 """Pairwise F1 and other evaluation metrics."""
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -9,7 +9,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 
 def compute_pairwise_f1(
-    embeddings: torch.Tensor | np.ndarray,
+    embeddings: Union[torch.Tensor, np.ndarray],
     lesion_ids: List[str],
     threshold: float = 0.5,
     metric: str = "cosine",
@@ -74,7 +74,7 @@ def compute_pairwise_f1(
 
 
 def evaluate_with_dbscan(
-    embeddings: torch.Tensor | np.ndarray,
+    embeddings: Union[torch.Tensor, np.ndarray],
     lesion_ids: List[str],
     eps: float = 0.5,
     min_samples: int = 2,
@@ -137,10 +137,10 @@ def evaluate_with_dbscan(
 
 
 def evaluate_embeddings(
-    embeddings: torch.Tensor | np.ndarray,
+    embeddings: Union[torch.Tensor, np.ndarray],
     lesion_ids: List[str],
-    cosine_thresholds: List[float] | None = None,
-    dbscan_eps_values: List[float] | None = None,
+    cosine_thresholds: Optional[List[float]] = None,
+    dbscan_eps_values: Optional[List[float]] = None,
     dbscan_min_samples: int = 2,
 ) -> Dict[str, Dict[str, float]]:
     """Comprehensive evaluation of embeddings.

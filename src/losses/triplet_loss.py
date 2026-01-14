@@ -32,7 +32,7 @@ class TripletLoss(nn.Module):
     def forward(
         self,
         embeddings: torch.Tensor,
-        labels: list[str],
+        labels: list,
     ) -> torch.Tensor:
         """Compute triplet loss.
         

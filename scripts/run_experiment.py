@@ -12,12 +12,12 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 import wandb
 
-from src.datasets import DermoscopicDataset, create_folds
-from src.models import EmbeddingModel
-from src.losses import ContrastiveLoss, TripletLoss, InfoNCELoss
-from src.training import Trainer
-from src.evaluation import evaluate_embeddings
-from src.utils import set_seed, get_image_path
+from datasets import DermoscopicDataset, create_folds
+from models import EmbeddingModel
+from losses import ContrastiveLoss, TripletLoss, InfoNCELoss
+from training import Trainer
+from evaluation import evaluate_embeddings
+from utils import set_seed
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")

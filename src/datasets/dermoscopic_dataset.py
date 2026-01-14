@@ -9,7 +9,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from ..utils.paths import get_image_path
+from utils.paths import get_image_path
 
 
 class DermoscopicDataset(Dataset):

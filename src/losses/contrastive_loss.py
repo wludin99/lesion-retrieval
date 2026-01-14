@@ -26,7 +26,7 @@ class ContrastiveLoss(nn.Module):
     def forward(
         self,
         embeddings: torch.Tensor,
-        labels: list[str],
+        labels: list,
     ) -> torch.Tensor:
         """Compute contrastive loss.
         
