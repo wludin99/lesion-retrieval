@@ -2,7 +2,13 @@
 name: dinov2
 backbone: facebook/dinov2-base
 pretrained: true
-embedding_dim: 768  # DINOv2-Base feature dim
+embedding_dim: 768  # DINOv2-Base feature dim (output dimension)
 
 # Feature extraction
 pool_type: mean  # mean pooling over sequence length
+
+# Phase 2 settings (for metric learning fine-tuning)
+# When freeze_backbone=true, backbone weights are frozen and only projection head is trained
+# Default: null (auto-set to true for Phase 2 with DINOv2, false for Phase 1)
+freeze_backbone: null  # null = auto (Phase 2 defaults to true for DINOv2), true/false to override
+projection_hidden_dim: null  # null = auto (Phase 2 adds projection head for DINOv2), int to override

@@ -20,6 +20,8 @@ class EmbeddingModel(nn.Module):
         pretrained: bool = True,
         embedding_dim: int = 2048,
         pool_type: str = "avg",
+        freeze_backbone: bool = False,
+        projection_hidden_dim: Optional[int] = None,
     ):
         """Initialize embedding model.
         
@@ -29,14 +31,18 @@ class EmbeddingModel(nn.Module):
                 - 'google/vit-base-patch16-224' (HuggingFace)
                 - 'facebook/dinov2-base' (HuggingFace)
             pretrained: Whether to use pretrained weights.
-            embedding_dim: Expected embedding dimension.
+            embedding_dim: Expected embedding dimension (output dimension).
             pool_type: Pooling type. For ResNet: 'avg', 'max', 'adaptive'.
                 For ViT/DINOv2: 'cls' (CLS token) or 'mean' (mean pooling).
+            freeze_backbone: Whether to freeze backbone weights.
+            projection_hidden_dim: If set, adds a one-hidden-layer FFN projection head.
+                Input dim is backbone feature dim, hidden dim is this value, output dim is embedding_dim.
         """
         super().__init__()
         self.backbone_name = backbone
         self.embedding_dim = embedding_dim
         self.pool_type = pool_type
+        self.freeze_backbone = freeze_backbone
         
         # Initialize backbone
         if "resnet" in backbone.lower():
@@ -46,6 +52,20 @@ class EmbeddingModel(nn.Module):
             self._init_transformer(backbone, pretrained)
         else:
             raise ValueError(f"Unsupported backbone: {backbone}. Use HuggingFace models like 'microsoft/resnet-50'")
+        
+        # Freeze backbone if requested
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+        
+        # Add projection head if requested
+        self.projection_head = None
+        if projection_hidden_dim is not None:
+            self.projection_head = nn.Sequential(
+                nn.Linear(self.feature_dim, projection_hidden_dim),
+                nn.ReLU(),
+                nn.Linear(projection_hidden_dim, embedding_dim),
+            )
     
     def _init_hf_resnet(self, backbone: str, pretrained: bool) -> None:
         """Initialize ResNet backbone from HuggingFace."""
@@ -117,11 +137,20 @@ class EmbeddingModel(nn.Module):
                 features = self.pool(features)
                 features = features.view(features.size(0), -1)
             
+            # Apply projection head if present
+            if self.projection_head is not None:
+                features = self.projection_head(features)
+            
             return features
         
         else:
             # Transformer forward
-            outputs = self.backbone(pixel_values=x)
+            # Set backbone to eval mode if frozen (for batch norm consistency)
+            if self.freeze_backbone:
+                self.backbone.eval()
+            
+            with torch.set_grad_enabled(not self.freeze_backbone):
+                outputs = self.backbone(pixel_values=x)
             
             if self.pool_type == "cls":
                 # Use CLS token
@@ -129,6 +158,10 @@ class EmbeddingModel(nn.Module):
             else:
                 # Mean pooling over sequence length
                 embeddings = outputs.last_hidden_state.mean(dim=1)
+            
+            # Apply projection head if present
+            if self.projection_head is not None:
+                embeddings = self.projection_head(embeddings)
             
             return embeddings
     

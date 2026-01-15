@@ -9,6 +9,69 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from tqdm import tqdm
 
 
+def _track_misclassifications(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    similarities: np.ndarray,
+    lesion_ids: List[str],
+    image_ids: List[str],
+    cluster_labels: Optional[np.ndarray] = None,
+) -> Dict[str, List[Dict]]:
+    """Track misclassified pairs from ground truth and predictions.
+    
+    Args:
+        y_true: Ground truth boolean matrix (n, n), True if same lesion.
+        y_pred: Prediction boolean matrix (n, n), True if predicted same.
+        similarities: Similarity matrix (n, n).
+        lesion_ids: List of lesion IDs for each sample.
+        image_ids: List of image IDs for each sample.
+        cluster_labels: Optional cluster labels for DBSCAN (to include in output).
+        
+    Returns:
+        Dictionary with 'false_positives' and 'false_negatives' lists.
+    """
+    n = len(lesion_ids)
+    false_positives = []  # Predicted same, actually different
+    false_negatives = []  # Predicted different, actually same
+    
+    for i in range(n):
+        for j in range(i + 1, n):
+            true_same = y_true[i, j]
+            pred_same = y_pred[i, j]
+            
+            if not true_same and pred_same:
+                # False positive
+                entry = {
+                    "image_id_1": image_ids[i],
+                    "image_id_2": image_ids[j],
+                    "lesion_id_1": lesion_ids[i],
+                    "lesion_id_2": lesion_ids[j],
+                    "similarity": float(similarities[i, j]),
+                }
+                if cluster_labels is not None:
+                    entry["cluster_1"] = int(cluster_labels[i])
+                    entry["cluster_2"] = int(cluster_labels[j])
+                false_positives.append(entry)
+            elif true_same and not pred_same:
+                # False negative
+                entry = {
+                    "image_id_1": image_ids[i],
+                    "image_id_2": image_ids[j],
+                    "lesion_id_1": lesion_ids[i],
+                    "lesion_id_2": lesion_ids[j],
+                    "similarity": float(similarities[i, j]),
+                }
+                if cluster_labels is not None:
+                    entry["cluster_1"] = int(cluster_labels[i])
+                    entry["cluster_2"] = int(cluster_labels[j])
+                false_negatives.append(entry)
+    
+    return {
+        "false_positives": false_positives,
+        "false_negatives": false_negatives,
+    }
+
+
 def compute_pairwise_f1(
     embeddings: Union[torch.Tensor, np.ndarray],
     lesion_ids: List[str],
@@ -70,12 +133,20 @@ def compute_pairwise_f1(
     f1 = f1_score(y_true_flat, y_pred_flat, zero_division=0.0)
     accuracy = accuracy_score(y_true_flat, y_pred_flat)
     
-    return {
+    result = {
         "precision": float(precision),
         "recall": float(recall),
         "f1": float(f1),
         "accuracy": float(accuracy),
     }
+    
+    # Track misclassified pairs if requested
+    if return_misclassified and image_ids is not None:
+        result["misclassified"] = _track_misclassifications(
+            y_true, y_pred, similarities, lesion_ids, image_ids
+        )
+    
+    return result
 
 
 def evaluate_with_dbscan(
@@ -137,12 +208,24 @@ def evaluate_with_dbscan(
     f1 = f1_score(y_true_flat, y_pred_flat, zero_division=0.0)
     accuracy = accuracy_score(y_true_flat, y_pred_flat)
     
-    return {
+    result = {
         "precision": float(precision),
         "recall": float(recall),
         "f1": float(f1),
         "accuracy": float(accuracy),
     }
+    
+    # Track misclassified pairs if requested
+    if return_misclassified and image_ids is not None:
+        # Compute similarities for misclassification tracking
+        embeddings_norm = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
+        similarities = np.dot(embeddings_norm, embeddings_norm.T)
+        
+        result["misclassified"] = _track_misclassifications(
+            y_true, y_pred, similarities, lesion_ids, image_ids, cluster_labels
+        )
+    
+    return result
 
 
 def evaluate_embeddings(
