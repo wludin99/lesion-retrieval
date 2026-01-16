@@ -193,7 +193,12 @@ class Trainer:
             if val_f1 > self.best_val_f1:
                 self.best_val_f1 = val_f1
                 self.patience_counter = 0
-                self.save_checkpoint("best.pt")
+                # Save best hyperparameters with checkpoint
+                self.save_checkpoint(
+                    "best.pt",
+                    cosine_threshold=val_metrics.get("val/cosine_threshold"),
+                    dbscan_eps=val_metrics.get("val/dbscan_eps"),
+                )
                 print(f"  ✓ New best model saved!")
             else:
                 self.patience_counter += 1
@@ -208,16 +213,31 @@ class Trainer:
                     print(f"Early stopping at epoch {epoch}")
                     break
     
-    def save_checkpoint(self, filename: str) -> None:
+    def save_checkpoint(
+        self,
+        filename: str,
+        cosine_threshold: Optional[float] = None,
+        dbscan_eps: Optional[float] = None,
+    ) -> None:
         """Save model checkpoint.
         
         Args:
             filename: Checkpoint filename.
+            cosine_threshold: Optimal cosine similarity threshold (optional).
+            dbscan_eps: Optimal DBSCAN eps parameter (optional).
         """
         checkpoint_path = self.output_dir / filename
-        torch.save({
+        checkpoint = {
             "epoch": self.current_epoch,
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "best_val_f1": self.best_val_f1,
-        }, checkpoint_path)
+        }
+        
+        # Add hyperparameters if provided
+        if cosine_threshold is not None:
+            checkpoint["cosine_threshold"] = cosine_threshold
+        if dbscan_eps is not None:
+            checkpoint["dbscan_eps"] = dbscan_eps
+        
+        torch.save(checkpoint, checkpoint_path)
