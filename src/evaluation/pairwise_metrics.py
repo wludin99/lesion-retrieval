@@ -213,6 +213,7 @@ def evaluate_with_dbscan(
         "recall": float(recall),
         "f1": float(f1),
         "accuracy": float(accuracy),
+        "cluster_labels": cluster_labels.tolist(),  # Always include cluster labels
     }
     
     # Track misclassified pairs if requested
