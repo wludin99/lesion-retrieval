@@ -1,6 +1,6 @@
 # Skinbit: Instance-Level Image Matching for Dermoscopic Images
 
-A complete, reproducible machine learning experiment repository for grouping dermoscopic images belonging to the same lesion using deep learning embeddings and metric learning.
+A reproducible ML experiment repository for grouping dermoscopic images belonging to the same lesion using deep learning embeddings and metric learning.
 
 ## Problem Statement
 
@@ -10,19 +10,14 @@ A complete, reproducible machine learning experiment repository for grouping der
 
 ## Features
 
-- ✅ **Lesion-based cross-validation**: All train/val splits done by `lesion_id`, preventing data leakage
-- ✅ **5-fold cross-validation** with optional stratification
-- ✅ **Train/test split**: Optional 80-20 stratified split before cross-validation
-- ✅ **Baseline embeddings**: ResNet, ViT, DINOv2 with frozen ImageNet/self-supervised weights
+- ✅ **Lesion-based cross-validation**: All splits done by `lesion_id`, preventing data leakage
+- ✅ **5-fold cross-validation** with optional stratification and train/test split
+- ✅ **Baseline embeddings**: ResNet, ViT, DINOv2 with frozen pretrained weights
 - ✅ **Metric learning**: Fine-tuning with contrastive, triplet, and InfoNCE losses
 - ✅ **Frozen backbone + projection head**: Default for ViT and DINOv2 in Phase 2
-- ✅ **Comprehensive evaluation**: Cosine similarity thresholding + DBSCAN clustering
+- ✅ **Evaluation**: Cosine similarity thresholding + DBSCAN clustering
 - ✅ **Final model training**: Trains on all training data using average hyperparameters from CV
-- ✅ **Clustering results**: Automatically saved to CSV after each validation run
-- ✅ **Misclassification tracking**: Save and visualize false positives/negatives
 - ✅ **Experiment tracking**: Weights & Biases integration
-- ✅ **Configuration management**: Hydra for all experiment settings
-- ✅ **Reproducibility**: Random seed control and config versioning
 - ✅ **Development mode**: Fast iteration with subset of data
 
 ## Setup
@@ -75,49 +70,25 @@ source .venv/bin/activate  # Linux/Mac
 │   ├── run_all_experiments.py      # Run all Phase 1 + Phase 2 experiments
 │   ├── cluster_images.py           # Cluster images using trained model
 │   └── visualize_misclassifications.py  # Visualize misclassified pairs
-├── experiments/         # Experiment outputs
-├── pyproject.toml       # Project dependencies
-└── README.md
+└── experiments/         # Experiment outputs
 ```
 
-## Configuration with Hydra
+## Configuration
 
-All experiment settings are managed through Hydra configs. The main config file is `configs/config.yaml`, which composes configs from subdirectories.
-
-### Key Configuration Groups
-
-- **`data/`**: Data loading, preprocessing, cross-validation settings, train/test split, dev mode
-- **`model/`**: Model architecture (resnet, vit, dinov2)
-- **`loss/`**: Loss function (none, contrastive, triplet, infonce)
-- **`training/`**: Training hyperparameters
-- **`evaluation/`**: Evaluation metrics and thresholds, misclassification saving
-- **`logging/`**: W&B and logging settings
-
-### Overriding Configs
-
-You can override any config value from the command line:
+All settings are managed through Hydra configs. Override any config value from the command line:
 
 ```bash
-# Change model
-uv run python scripts/run_experiment.py model=vit
-
-# Change loss
-uv run python scripts/run_experiment.py loss=triplet
+# Change model, loss, phase
+uv run python scripts/run_experiment.py model=vit loss=triplet experiment.phase=2
 
 # Run specific fold
 uv run python scripts/run_experiment.py experiment.fold=0
 
-# Change experiment phase
-uv run python scripts/run_experiment.py experiment.phase=2
-
 # Enable train/test split
 uv run python scripts/run_experiment.py data.use_train_test_split=true
 
-# Enable development mode (30 lesions, 1 epoch, fold 0 only)
+# Development mode (30 lesions, 1 epoch, fold 0 only)
 uv run python scripts/run_experiment.py data.dev_mode=true
-
-# Combine multiple overrides
-uv run python scripts/run_experiment.py model=dinov2 experiment.phase=1 experiment.fold=0 data.dev_mode=true
 ```
 
 ## Running Experiments
@@ -126,108 +97,51 @@ uv run python scripts/run_experiment.py model=dinov2 experiment.phase=1 experime
 
 ### Phase 1: Baseline Embedding Extraction
 
-Extract embeddings from frozen pretrained models and evaluate with cosine similarity and DBSCAN.
-
-#### ResNet Baseline
+Extract embeddings from frozen pretrained models:
 
 ```bash
-uv run python scripts/run_experiment.py \
-    model=resnet \
-    experiment.phase=1 \
-    experiment.name=baseline_resnet
-```
+# ResNet
+uv run python scripts/run_experiment.py model=resnet experiment.phase=1 experiment.name=baseline_resnet
 
-#### Vision Transformer Baseline
+# Vision Transformer
+uv run python scripts/run_experiment.py model=vit experiment.phase=1 experiment.name=baseline_vit
 
-```bash
-uv run python scripts/run_experiment.py \
-    model=vit \
-    experiment.phase=1 \
-    experiment.name=baseline_vit
-```
-
-#### DINOv2 Baseline
-
-```bash
-uv run python scripts/run_experiment.py \
-    model=dinov2 \
-    experiment.phase=1 \
-    experiment.name=baseline_dinov2
+# DINOv2
+uv run python scripts/run_experiment.py model=dinov2 experiment.phase=1 experiment.name=baseline_dinov2
 ```
 
 ### Phase 2: Metric Learning Fine-Tuning
 
-Fine-tune models using metric learning losses. **Note**: ViT and DINOv2 default to frozen backbone + trainable projection head in Phase 2.
-
-#### Contrastive Loss
+Fine-tune models using metric learning losses (ViT and DINOv2 default to frozen backbone + projection head):
 
 ```bash
-uv run python scripts/run_experiment.py \
-    model=resnet \
-    loss=contrastive \
-    experiment.phase=2 \
-    experiment.name=finetune_resnet_contrastive
-```
+# Contrastive Loss
+uv run python scripts/run_experiment.py model=resnet loss=contrastive experiment.phase=2 experiment.name=finetune_resnet_contrastive
 
-#### Triplet Loss
+# Triplet Loss
+uv run python scripts/run_experiment.py model=resnet loss=triplet experiment.phase=2 experiment.name=finetune_resnet_triplet
 
-```bash
-uv run python scripts/run_experiment.py \
-    model=resnet \
-    loss=triplet \
-    experiment.phase=2 \
-    experiment.name=finetune_resnet_triplet
-```
-
-#### InfoNCE Loss
-
-```bash
-uv run python scripts/run_experiment.py \
-    model=resnet \
-    loss=infonce \
-    experiment.phase=2 \
-    experiment.name=finetune_resnet_infonce
-```
-
-### Development Mode
-
-For fast iteration, use development mode (30 lesions max, 1 epoch, fold 0 only):
-
-```bash
-uv run python scripts/run_experiment.py \
-    model=resnet \
-    loss=contrastive \
-    experiment.phase=2 \
-    experiment.name=finetune_resnet_contrastive_dev \
-    data.dev_mode=true
+# InfoNCE Loss
+uv run python scripts/run_experiment.py model=resnet loss=infonce experiment.phase=2 experiment.name=finetune_resnet_infonce
 ```
 
 ### Running All Experiments
 
-Run all Phase 1 and Phase 2 experiments sequentially:
+Run all Phase 1 and Phase 2 experiments sequentially (12 total):
 
 ```bash
 uv run python scripts/run_all_experiments.py
 ```
 
-This runs:
-- Phase 1: 3 baseline models (ResNet, ViT, DINOv2)
-- Phase 2: 9 experiments (3 models × 3 losses)
-
-Total: 12 experiments
-
-## Cross-Validation and Evaluation Protocol
+## Evaluation Protocol
 
 ### Lesion-Based Splitting
 
-**Critical**: All splits are done by `lesion_id`, not by image. This ensures:
-- No data leakage: images from the same lesion never appear in both train and val
-- Realistic evaluation: model must generalize to unseen lesions
-- Proper grouping: all images of a lesion are kept together
+**Critical**: All splits are done by `lesion_id`, not by image. This ensures no data leakage and realistic evaluation.
 
-### Train/Test Split
+### Train/Test Split (Optional)
 
-If enabled (`data.use_train_test_split=true`), the protocol is:
+If enabled (`data.use_train_test_split=true`):
 
 1. **Initial split**: 80-20 stratified split of lesions into training and test sets
 2. **Cross-validation**: 5-fold CV performed on training set only
@@ -235,137 +149,65 @@ If enabled (`data.use_train_test_split=true`), the protocol is:
 4. **Final model training**: Train model on all training data (Phase 2 only)
 5. **Test evaluation**: Evaluate final model on test set using average hyperparameters
 
-This ensures unbiased final evaluation on held-out test data.
+### Metrics
 
-### Stratification
+- **Cosine similarity thresholding**: Pairwise F1 with optimal threshold (0.5-0.99 range)
+- **DBSCAN clustering**: Pairwise F1 with optimal `eps` (0.1-0.9 range)
+- **Pairwise F1**: Primary metric computed over all image pairs (same lesion = positive, different lesion = negative)
 
-You can stratify folds by metadata columns (e.g., anatomical site):
-
-```bash
-uv run python scripts/run_experiment.py \
-    data.stratify_by=anatom_site_general
-```
-
-### Fold Structure
-
-- **5-fold cross-validation** by default
-- Each fold splits lesions (not images) into train/val
-- Results are computed per fold and averaged
-- All metrics logged to W&B with fold-specific tags
-- Per-fold results saved to `fold_{i}/results.csv`
-- Overall results saved to `results.csv` in experiment root
-
-## Evaluation Metrics
-
-### Cosine Similarity Thresholding
-
-- Computes pairwise cosine similarities between all embeddings
-- Varies threshold from 0.5 to 0.99 (50 values by default)
-- Reports best F1, precision, recall, accuracy
-- Optimal threshold saved per fold
-
-### DBSCAN Clustering
-
-- Clusters embeddings using DBSCAN
-- Varies `eps` parameter from 0.1 to 0.9 (20 values by default)
-- Reports best F1, precision, recall, accuracy
-- Optimal `eps` saved per fold
-- Cluster assignments saved to `clustered_images.csv` per fold
-
-### Pairwise F1 Score
-
-The primary metric is **pairwise F1**:
-- **Positive pairs**: Images from the same lesion
-- **Negative pairs**: Images from different lesions
-- F1 score computed over all pairwise comparisons
+Results are saved to CSV files (transposed format) per fold and overall.
 
 ## Data Format
 
 ### CSV Structure
 
-The `data/data.csv` file should have at minimum:
+The `data/data.csv` file should have:
 - `lesion_id`: Unique identifier for each lesion
 - `image_id`: Unique identifier for each image (without .jpg extension)
 
-Optional columns for stratification:
-- `anatom_site_general`: Anatomical site
-- `sex`: Patient sex
-- `dermoscopic_type`: Dermoscopic imaging type
-- Other metadata columns
+Optional columns for stratification (e.g., `anatom_site_general`).
 
 ### Image Files
 
-Images should be stored in `data/images/` with naming:
-- `{image_id}.jpg` (e.g., `ISIC_0028791.jpg`)
+Images should be stored in `data/images/` as `{image_id}.jpg` (e.g., `ISIC_0028791.jpg`).
 
-## Weights & Biases Integration
+## Utilities
 
-All experiments are automatically logged to W&B:
+### Cluster Images
 
-- **Metrics**: Training loss, validation F1, precision, recall (per fold and averaged)
-- **Config**: Full Hydra config for reproducibility
-- **Tags**: Experiment name, model, loss, phase
-- **Test metrics**: Final test set evaluation (if train/test split enabled)
+Cluster images using a trained model:
 
-View results at: `https://wandb.ai/{entity}/{project}`
+```bash
+uv run scripts/cluster_images.py experiments/finetune_resnet_contrastive data/ --fold 0
+```
+
+### Visualize Misclassifications
+
+Generate side-by-side comparisons of misclassified pairs:
+
+```bash
+uv run python scripts/visualize_misclassifications.py experiments/finetune_resnet_contrastive/test_misclassifications_cosine.json
+```
+
+## Experiment Outputs
+
+Each experiment saves:
+- `resolved_config.yaml`: Full configuration used for the experiment
+- `results.csv`: Overall results (transposed format)
+- `fold_{i}/results.csv`: Per-fold results (transposed format)
+- `fold_{i}/best.pt`: Best model checkpoint (includes hyperparameters)
+- `fold_{i}/clustered_images.csv`: Cluster assignments
+- `test_misclassifications_*.json`: Test set misclassifications (if enabled)
 
 ## Reproducibility
 
-- **Random seeds**: Set via `experiment.seed` (default: 42)
-- **Config versioning**: Resolved configs saved with each run
-- **Deterministic operations**: PyTorch deterministic mode enabled
-- **Fixed splits**: Cross-validation folds are deterministic given seed
-- **Train/test split**: Deterministic given seed
+- Random seeds controlled via `experiment.seed` (default: 42)
+- Resolved configs saved with each run
+- PyTorch deterministic mode enabled
+- All splits are deterministic given seed
 
 ## Troubleshooting
 
-### CUDA Out of Memory
-
-Reduce batch size:
-```bash
-uv run python scripts/run_experiment.py data.batch_size=16
-```
-
-### Slow Data Loading
-
-Increase number of workers:
-```bash
-uv run python scripts/run_experiment.py data.num_workers=8
-```
-
-### W&B Not Logging
-
-Check that W&B is enabled and you're logged in:
-```bash
-wandb status
-```
-
-Disable W&B if not needed:
-```bash
-uv run python scripts/run_experiment.py logging.wandb.enabled=false
-```
-
-### MPS (Apple Silicon) Issues
-
-MPS doesn't support `pin_memory`, but this is automatically handled. If you encounter issues, ensure you're using a recent PyTorch version.
-
-## Citation
-
-If you use this codebase, please cite:
-
-```bibtex
-@software{skinbit2024,
-  title={Skinbit: Instance-Level Image Matching for Dermoscopic Images},
-  author={Your Name},
-  year={2024},
-  url={https://github.com/yourusername/skinbit}
-}
-```
-
-## License
-
-[Your License Here]
-
-## Contact
-
-[Your Contact Information]
+**CUDA Out of Memory**: Reduce batch size: `data.batch_size=16`  
+**Slow Data Loading**: Increase workers: `data.num_workers=8`  
+**W&B Not Logging**: Check `wandb status` or disable with `logging.wandb.enabled=false`
