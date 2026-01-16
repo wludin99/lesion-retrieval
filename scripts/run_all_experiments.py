@@ -29,15 +29,15 @@ def main():
     # For now, we'll run all models with all losses
     # User can manually select best model after Phase 1
     phase2_experiments = [
+        ("dinov2", "contrastive", "finetune_dinov2_contrastive"),
+        ("dinov2", "triplet", "finetune_dinov2_triplet"),
+        ("dinov2", "infonce", "finetune_dinov2_infonce"),
         ("resnet", "contrastive", "finetune_resnet_contrastive"),
         ("resnet", "triplet", "finetune_resnet_triplet"),
         ("resnet", "infonce", "finetune_resnet_infonce"),
         ("vit", "contrastive", "finetune_vit_contrastive"),
         ("vit", "triplet", "finetune_vit_triplet"),
         ("vit", "infonce", "finetune_vit_infonce"),
-        ("dinov2", "contrastive", "finetune_dinov2_contrastive"),
-        ("dinov2", "triplet", "finetune_dinov2_triplet"),
-        ("dinov2", "infonce", "finetune_dinov2_infonce"),
     ]
     
     print("="*60)
