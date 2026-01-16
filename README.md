@@ -12,12 +12,18 @@ A complete, reproducible machine learning experiment repository for grouping der
 
 - ✅ **Lesion-based cross-validation**: All train/val splits done by `lesion_id`, preventing data leakage
 - ✅ **5-fold cross-validation** with optional stratification
+- ✅ **Train/test split**: Optional 80-20 stratified split before cross-validation
 - ✅ **Baseline embeddings**: ResNet, ViT, DINOv2 with frozen ImageNet/self-supervised weights
 - ✅ **Metric learning**: Fine-tuning with contrastive, triplet, and InfoNCE losses
+- ✅ **Frozen backbone + projection head**: Default for ViT and DINOv2 in Phase 2
 - ✅ **Comprehensive evaluation**: Cosine similarity thresholding + DBSCAN clustering
+- ✅ **Final model training**: Trains on all training data using average hyperparameters from CV
+- ✅ **Clustering results**: Automatically saved to CSV after each validation run
+- ✅ **Misclassification tracking**: Save and visualize false positives/negatives
 - ✅ **Experiment tracking**: Weights & Biases integration
 - ✅ **Configuration management**: Hydra for all experiment settings
 - ✅ **Reproducibility**: Random seed control and config versioning
+- ✅ **Development mode**: Fast iteration with subset of data
 
 ## Setup
 
@@ -65,7 +71,10 @@ source .venv/bin/activate  # Linux/Mac
 │   ├── evaluation/      # Evaluation metrics
 │   └── utils/           # Utilities (seeding, paths)
 ├── scripts/
-│   └── run_experiment.py  # Main entry point
+│   ├── run_experiment.py           # Main entry point
+│   ├── run_all_experiments.py      # Run all Phase 1 + Phase 2 experiments
+│   ├── cluster_images.py           # Cluster images using trained model
+│   └── visualize_misclassifications.py  # Visualize misclassified pairs
 ├── experiments/         # Experiment outputs
 ├── pyproject.toml       # Project dependencies
 └── README.md
@@ -77,11 +86,11 @@ All experiment settings are managed through Hydra configs. The main config file 
 
 ### Key Configuration Groups
 
-- **`data/`**: Data loading, preprocessing, cross-validation settings
+- **`data/`**: Data loading, preprocessing, cross-validation settings, train/test split, dev mode
 - **`model/`**: Model architecture (resnet, vit, dinov2)
 - **`loss/`**: Loss function (none, contrastive, triplet, infonce)
 - **`training/`**: Training hyperparameters
-- **`evaluation/`**: Evaluation metrics and thresholds
+- **`evaluation/`**: Evaluation metrics and thresholds, misclassification saving
 - **`logging/`**: W&B and logging settings
 
 ### Overriding Configs
@@ -90,24 +99,30 @@ You can override any config value from the command line:
 
 ```bash
 # Change model
-python scripts/run_experiment.py model=vit
+uv run python scripts/run_experiment.py model=vit
 
 # Change loss
-python scripts/run_experiment.py loss=triplet
+uv run python scripts/run_experiment.py loss=triplet
 
 # Run specific fold
-python scripts/run_experiment.py experiment.fold=0
+uv run python scripts/run_experiment.py experiment.fold=0
 
 # Change experiment phase
-python scripts/run_experiment.py experiment.phase=2
+uv run python scripts/run_experiment.py experiment.phase=2
+
+# Enable train/test split
+uv run python scripts/run_experiment.py data.use_train_test_split=true
+
+# Enable development mode (30 lesions, 1 epoch, fold 0 only)
+uv run python scripts/run_experiment.py data.dev_mode=true
 
 # Combine multiple overrides
-python scripts/run_experiment.py model=dinov2 experiment.phase=1 experiment.fold=0
+uv run python scripts/run_experiment.py model=dinov2 experiment.phase=1 experiment.fold=0 data.dev_mode=true
 ```
 
 ## Running Experiments
 
-**Important**: Run all commands from the project root directory (`/Users/williamludington/Projects/skinbit`).
+**Important**: Run all commands from the project root directory.
 
 ### Phase 1: Baseline Embedding Extraction
 
@@ -116,7 +131,7 @@ Extract embeddings from frozen pretrained models and evaluate with cosine simila
 #### ResNet Baseline
 
 ```bash
-python scripts/run_experiment.py \
+uv run python scripts/run_experiment.py \
     model=resnet \
     experiment.phase=1 \
     experiment.name=baseline_resnet
@@ -125,7 +140,7 @@ python scripts/run_experiment.py \
 #### Vision Transformer Baseline
 
 ```bash
-python scripts/run_experiment.py \
+uv run python scripts/run_experiment.py \
     model=vit \
     experiment.phase=1 \
     experiment.name=baseline_vit
@@ -134,31 +149,20 @@ python scripts/run_experiment.py \
 #### DINOv2 Baseline
 
 ```bash
-python scripts/run_experiment.py \
+uv run python scripts/run_experiment.py \
     model=dinov2 \
     experiment.phase=1 \
     experiment.name=baseline_dinov2
 ```
 
-#### Run All Folds
-
-By default, all 5 folds are run. Results are averaged across folds and logged to W&B.
-
-```bash
-python scripts/run_experiment.py \
-    model=resnet \
-    experiment.phase=1 \
-    experiment.fold=null  # null = all folds
-```
-
 ### Phase 2: Metric Learning Fine-Tuning
 
-Fine-tune the best backbone from Phase 1 using metric learning losses.
+Fine-tune models using metric learning losses. **Note**: ViT and DINOv2 default to frozen backbone + trainable projection head in Phase 2.
 
 #### Contrastive Loss
 
 ```bash
-python scripts/run_experiment.py \
+uv run python scripts/run_experiment.py \
     model=resnet \
     loss=contrastive \
     experiment.phase=2 \
@@ -168,7 +172,7 @@ python scripts/run_experiment.py \
 #### Triplet Loss
 
 ```bash
-python scripts/run_experiment.py \
+uv run python scripts/run_experiment.py \
     model=resnet \
     loss=triplet \
     experiment.phase=2 \
@@ -178,14 +182,41 @@ python scripts/run_experiment.py \
 #### InfoNCE Loss
 
 ```bash
-python scripts/run_experiment.py \
+uv run python scripts/run_experiment.py \
     model=resnet \
     loss=infonce \
     experiment.phase=2 \
     experiment.name=finetune_resnet_infonce
 ```
 
-## Cross-Validation Protocol
+### Development Mode
+
+For fast iteration, use development mode (30 lesions max, 1 epoch, fold 0 only):
+
+```bash
+uv run python scripts/run_experiment.py \
+    model=resnet \
+    loss=contrastive \
+    experiment.phase=2 \
+    experiment.name=finetune_resnet_contrastive_dev \
+    data.dev_mode=true
+```
+
+### Running All Experiments
+
+Run all Phase 1 and Phase 2 experiments sequentially:
+
+```bash
+uv run python scripts/run_all_experiments.py
+```
+
+This runs:
+- Phase 1: 3 baseline models (ResNet, ViT, DINOv2)
+- Phase 2: 9 experiments (3 models × 3 losses)
+
+Total: 12 experiments
+
+## Cross-Validation and Evaluation Protocol
 
 ### Lesion-Based Splitting
 
@@ -194,12 +225,24 @@ python scripts/run_experiment.py \
 - Realistic evaluation: model must generalize to unseen lesions
 - Proper grouping: all images of a lesion are kept together
 
+### Train/Test Split
+
+If enabled (`data.use_train_test_split=true`), the protocol is:
+
+1. **Initial split**: 80-20 stratified split of lesions into training and test sets
+2. **Cross-validation**: 5-fold CV performed on training set only
+3. **Hyperparameter selection**: Average best hyperparameters computed across CV folds
+4. **Final model training**: Train model on all training data (Phase 2 only)
+5. **Test evaluation**: Evaluate final model on test set using average hyperparameters
+
+This ensures unbiased final evaluation on held-out test data.
+
 ### Stratification
 
 You can stratify folds by metadata columns (e.g., anatomical site):
 
 ```bash
-python scripts/run_experiment.py \
+uv run python scripts/run_experiment.py \
     data.stratify_by=anatom_site_general
 ```
 
@@ -209,6 +252,8 @@ python scripts/run_experiment.py \
 - Each fold splits lesions (not images) into train/val
 - Results are computed per fold and averaged
 - All metrics logged to W&B with fold-specific tags
+- Per-fold results saved to `fold_{i}/results.csv`
+- Overall results saved to `results.csv` in experiment root
 
 ## Evaluation Metrics
 
@@ -217,12 +262,15 @@ python scripts/run_experiment.py \
 - Computes pairwise cosine similarities between all embeddings
 - Varies threshold from 0.5 to 0.99 (50 values by default)
 - Reports best F1, precision, recall, accuracy
+- Optimal threshold saved per fold
 
 ### DBSCAN Clustering
 
 - Clusters embeddings using DBSCAN
 - Varies `eps` parameter from 0.1 to 0.9 (20 values by default)
 - Reports best F1, precision, recall, accuracy
+- Optimal `eps` saved per fold
+- Cluster assignments saved to `clustered_images.csv` per fold
 
 ### Pairwise F1 Score
 
@@ -250,23 +298,14 @@ Optional columns for stratification:
 Images should be stored in `data/images/` with naming:
 - `{image_id}.jpg` (e.g., `ISIC_0028791.jpg`)
 
-## Experiment Outputs
-
-All experiments save outputs to `experiments/{experiment_name}/`:
-
-- `resolved_config.yaml`: Full resolved Hydra config for reproducibility
-- `fold_{i}/`: Per-fold outputs (for Phase 2)
-  - `best.pt`: Best model checkpoint
-  - `checkpoint_epoch_{n}.pt`: Periodic checkpoints
-
 ## Weights & Biases Integration
 
 All experiments are automatically logged to W&B:
 
-- **Metrics**: Training loss, validation F1, precision, recall
+- **Metrics**: Training loss, validation F1, precision, recall (per fold and averaged)
 - **Config**: Full Hydra config for reproducibility
-- **Artifacts**: Model checkpoints (optional)
 - **Tags**: Experiment name, model, loss, phase
+- **Test metrics**: Final test set evaluation (if train/test split enabled)
 
 View results at: `https://wandb.ai/{entity}/{project}`
 
@@ -276,26 +315,7 @@ View results at: `https://wandb.ai/{entity}/{project}`
 - **Config versioning**: Resolved configs saved with each run
 - **Deterministic operations**: PyTorch deterministic mode enabled
 - **Fixed splits**: Cross-validation folds are deterministic given seed
-
-## Development
-
-### Type Hints
-
-All code uses Python type hints for clarity and IDE support.
-
-### Code Style
-
-- Follow PEP 8
-- Use type hints
-- Add docstrings to public functions/classes
-- Keep functions focused and clear
-
-### Testing
-
-```bash
-# Run tests (when implemented)
-uv run pytest
-```
+- **Train/test split**: Deterministic given seed
 
 ## Troubleshooting
 
@@ -303,14 +323,14 @@ uv run pytest
 
 Reduce batch size:
 ```bash
-python scripts/run_experiment.py data.batch_size=16
+uv run python scripts/run_experiment.py data.batch_size=16
 ```
 
 ### Slow Data Loading
 
 Increase number of workers:
 ```bash
-python scripts/run_experiment.py data.num_workers=8
+uv run python scripts/run_experiment.py data.num_workers=8
 ```
 
 ### W&B Not Logging
@@ -319,6 +339,15 @@ Check that W&B is enabled and you're logged in:
 ```bash
 wandb status
 ```
+
+Disable W&B if not needed:
+```bash
+uv run python scripts/run_experiment.py logging.wandb.enabled=false
+```
+
+### MPS (Apple Silicon) Issues
+
+MPS doesn't support `pin_memory`, but this is automatically handled. If you encounter issues, ensure you're using a recent PyTorch version.
 
 ## Citation
 
